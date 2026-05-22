@@ -1,0 +1,602 @@
+{
+  "name": "Customer Service Daily QA",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Get array of chats from HTTP Request\nconst chats = items[0].json.success?.data || items[0].json.data || [];\n\nreturn chats.map(chat => {\n  \n  function convertToISO(raw) {\n    if (!raw || typeof raw !== 'string') return null;\n\n    // Handle format: \"2025-11-18 19:03:08\" -> already ISO\n    if (raw.includes('-') && raw.includes(':')) {\n      return raw.replace(' ', 'T');\n    }\n\n    // Handle format: \"18.11.2025 17:37:14\"\n    if (raw.includes('.')) {\n      try {\n        const [datePart, timePart] = raw.split(' ');\n        const [DD, MM, YYYY] = datePart.split('.');\n        return `${YYYY}-${MM}-${DD}T${timePart}`;\n      } catch(error) {\n        return null;\n      }\n    }\n\n    return null;\n  }\n\n  return {\n    json: {\n      ...chat,\n      createdAtISO: convertToISO(chat.createdAt),\n      updatedAtISO: convertToISO(chat.updatedAt),\n      completedAtISO: convertToISO(chat.completedAt)\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1248, -2048],
+      "id": "e1cc7a46-7eaa-448c-b89c-d1870e44f3a7",
+      "name": "Code in JavaScript",
+      "notes": "Separate each chat data"
+    },
+    {
+      "parameters": {
+        "url": "https://YOUR_DOMAIN.useresponse.com/api/7.0/chats.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "apiKey", "value": "YOUR_USERESPONSE_API_KEY" },
+            { "name": "groupValue", "value": "YOUR_GROUP_VALUE" },
+            { "name": "perPage", "value": "1000" },
+            { "name": "sort", "value": "new" },
+            { "name": "page", "value": "={{ $json.page ?? 1 }}" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-1696, -1968],
+      "id": "d9c2e526-6a89-4cfc-8228-2ee600ac9bae",
+      "name": "HTTP Request2",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "notes": "Get chats (paginated)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst currentPage = item.page ?? 1;\n\nreturn [\n  {\n    json: {\n      page: currentPage + 1\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [320, -1872],
+      "id": "d007675c-7850-458b-aee2-41e9e0b13aea",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "9aef8ad4-6428-46e6-904d-e030bb01ccd6",
+              "leftValue": "={{ $json.success?.data?.length > 0 }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-1472, -2048],
+      "id": "fb4da63c-fd24-4066-ad73-1cc3b922d529",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "701e892c-0af9-42dd-a3b2-d0ed2204c21c",
+              "leftValue": "={{ $json.createdAt }}",
+              "rightValue": "={{ $now.minus({ days: 1 }).startOf('day') }}",
+              "operator": { "type": "dateTime", "operation": "afterOrEquals" }
+            },
+            {
+              "id": "6006557d-5d63-4ea9-b83a-42748611cd41",
+              "leftValue": "={{ $json.createdAt }}",
+              "rightValue": "={{ $now.startOf('day') }}",
+              "operator": { "type": "dateTime", "operation": "before" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": { "ignoreCase": false }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-1024, -2048],
+      "id": "9ced9f2d-7993-4212-9d20-5f8ba3469336",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "YOUR_CHAT_ID_DB_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Chat ID DB"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "chatId": "={{ $json.chatId }}",
+            "externalID": "={{ $json.externalId }}",
+            "agent": "={{ $json.agent }}",
+            "Theme": "={{ $json.theme }}",
+            "Subtheme": "={{ $json.subtheme }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "chatId", "displayName": "chatId", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "externalID", "displayName": "externalID", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "agent", "displayName": "agent", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "Theme", "displayName": "Theme", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "Subtheme", "displayName": "Subtheme", "required": false, "defaultMatch": false, "display": true, "type": "string", "readOnly": false, "removed": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [-576, -2208],
+      "id": "aea2eade-6af6-44ae-b36c-901825f11fa1",
+      "name": "Insert row"
+    },
+    {
+      "parameters": { "aggregate": "aggregateAllItemData", "options": {} },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [-576, -2016],
+      "id": "43c7da2d-bd55-4753-be0c-727017afbe39",
+      "name": "Aggregate1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "5d44826e-e002-4d6c-af73-e14816864c16",
+              "leftValue": "={{ $json.uniqueByChatId }}",
+              "rightValue": 80,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [96, -2048],
+      "id": "2d3f008a-c4a3-4305-ab4a-179a7076a1d6",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YOUR_CHAT_ID_DB_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Chat ID DB"
+        },
+        "filters": { "conditions": [{ "keyName": "chatId", "condition": "isNotEmpty" }] },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "id"
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [-352, -2048],
+      "id": "23c40cca-fddc-4c77-b1b8-c9d784e17dee",
+      "name": "Get row(s)1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst totalItems = items.length;\nconst uniqueChatIds = new Set(items.map(i => String(i.chatId)));\nconst uniqueExternalIds = new Set(items.map(i => String(i.externalID)));\n\nlet page = 1;\ntry {\n  page = $('Code in JavaScript2').first().json?.page ?? \n         $('Execute Workflow Trigger').first().json?.page ?? 1;\n} catch(e) {\n  page = 1;\n}\n\nreturn [\n  {\n    json: {\n      totalItems,\n      uniqueByChatId: uniqueChatIds.size,\n      uniqueByExternalID: uniqueExternalIds.size,\n      duplicateCountByChatId: totalItems - uniqueChatIds.size,\n      duplicateCountByExternalID: totalItems - uniqueExternalIds.size,\n      page\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-128, -2048],
+      "id": "ec1a3e9b-eb7d-46b6-b435-5cc1737b5919",
+      "name": "Code in JavaScript5"
+    },
+    {
+      "parameters": {
+        "rule": { "interval": [{ "triggerAtHour": 8 }] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-1920, -1968],
+      "id": "6b11d52b-8403-4f11-9f0e-2de392fe5026",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node — \"Flatten chat themes (auto-detect)\"\n// Converts the nested custom_fields array into flat theme/subtheme strings.\n\nconst items = $input.all();\nconst results = [];\n\nconst MAIN_THEME_FIELD = 'property_73';\n\nfunction firstString(v) {\n  if (v === undefined || v === null) return '';\n  if (Array.isArray(v)) return v.length ? String(v[0]).trim() : '';\n  return String(v).trim();\n}\n\nfunction extractThemes(customFields) {\n  let theme = '';\n  let subtheme = '';\n  let subthemeLabel = '';\n\n  if (!Array.isArray(customFields)) {\n    return { theme, subtheme, subthemeLabel };\n  }\n\n  for (const field of customFields) {\n    if (!field || typeof field !== 'object') continue;\n    const name = field.name;\n    const value = firstString(field.textValue);\n    const label = firstString(field.label);\n    if (!value) continue;\n\n    if (name === MAIN_THEME_FIELD) {\n      theme = value;\n    } else {\n      if (!subtheme) {\n        subtheme = value;\n        subthemeLabel = label;\n      }\n    }\n  }\n\n  return { theme, subtheme, subthemeLabel };\n}\n\nfor (const item of items) {\n  const data = item.json;\n  if (!data || typeof data !== 'object') continue;\n\n  const { theme, subtheme, subthemeLabel } = extractThemes(data.custom_fields);\n\n  results.push({\n    json: {\n      chatId: data.id ?? '',\n      externalId: data.externalId ?? '',\n      agent: data.responsible?.name ?? data.lastMessage?.author?.name ?? '',\n      customer: data.author?.name ?? '',\n      theme: theme.trim(),\n      subtheme: subtheme.trim(),\n      subthemeLabel: subthemeLabel.trim(),\n      createdAt: data.createdAt ?? '',\n      completedAt: data.completedAt ?? '',\n    },\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-800, -2208],
+      "id": "8514b487-e5d7-44a5-baba-44c92f0cbc26",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "url": "=https://YOUR_DOMAIN.useresponse.com/api/7.0/chats/{{ $json.externalID }}/messages.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "apiKey", "value": "YOUR_USERESPONSE_API_KEY" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "98bcce40-95a4-4a83-87dd-574f3527cf0b",
+      "name": "HTTP Request1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [992, -2480],
+      "alwaysOutputData": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nfunction formatTime(posix) {\n  if (!posix) return \"\";\n  const date = new Date(posix * 1000);\n  const tzOffset = 4 * 60 * 60 * 1000; // GMT+4\n  const local = new Date(date.getTime() + tzOffset);\n  return local.toISOString().replace(\"T\", \" \").substring(0, 19) + \" GMT+4\";\n}\n\nfor (const item of items) {\n  const messages = item.json.success?.data || item.json.data || [];\n  if (!messages.length) continue;\n\n  const filtered = messages.filter(\n    m => !m.isSystem && m.content && m.type !== \"ai_bot\"\n  );\n\n  const seen = new Set();\n  const unique = filtered.filter(m => {\n    const key = `${m.author?.name || \"\"}-${m.content || \"\"}-${m.createdAtPosix || \"\"}`;\n    if (seen.has(key)) return false;\n    seen.add(key);\n    return true;\n  });\n\n  unique.sort((a, b) => (a.createdAtPosix || 0) - (b.createdAtPosix || 0));\n\n  const agentMsg = unique.find(m => m.author?.role?.alias === \"agent\");\n  const agent = agentMsg?.author?.name || \"Unknown Agent\";\n  const customerMsg = unique.find(m => m.author?.role?.alias === \"user\");\n  const customer = customerMsg?.author?.name || \"Unknown Customer\";\n\n  const chatId = unique[0]?.parentId || item.json.chatId || \"unknown\";\n\n  const conversation = unique\n    .map(m => {\n      const ts = formatTime(m.createdAtPosix);\n      const author = m.author?.name || \"Unknown\";\n      const text = (m.content || \"\").trim();\n      return `(${ts}) ${author}: ${text}`;\n    })\n    .join(\"\\n\");\n\n  output.push({\n    json: { chatId, agent, customer, conversation }\n  });\n}\n\nreturn output;"
+      },
+      "id": "1845c927-4c5b-4f55-88e0-dda1c37fe834",
+      "name": "Code in JavaScript3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1216, -2480]
+    },
+    {
+      "parameters": { "amount": 2 },
+      "id": "27fda383-c438-4d37-a982-4c7b0cd12b81",
+      "name": "Rate Limit Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1440, -2480],
+      "webhookId": "YOUR_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Chat ID: {{$json.chatId}}\nAgent: {{$json.agent}}\nCustomer: {{$json.customer}}\n\nConversation:\n{{$json.conversation}}",
+        "options": {
+          "systemMessage": "=You are a Customer Support Quality Assurance Evaluator. You audit agent performance against a fixed rubric and return a single structured JSON verdict.\n\n=====================================================\n1. CORE PRINCIPLES\n=====================================================\n- Conversation language: TURKISH. Feedback MUST be written in ENGLISH.\n- NEVER guess. If a fact cannot be verified from the conversation or from an allowed tool, apply the rules below.\n- Use tools ONLY when the criterion explicitly requires it.\n- Always produce a non-empty overall Feedback.\n- Feedback MUST be specific to THIS chat.\n- Schema consistency: in EVERY Yes/No field, \"Yes\" means GOOD and \"No\" means BAD.\n\n=====================================================\n2. SCORING SCALE (STRICT)\n=====================================================\nAllowed values per criterion: \"Yes\" | \"No\" | \"N/A\" | \"Check\"\n\n\"Check\" is RESERVED only for:\n  - Accuracy and Completeness — when the customer asks whether a bonus/cashback WAS or WAS NOT received.\n\nIn every other criterion, commit to \"Yes\", \"No\", or \"N/A\".\n\n=====================================================\n3. TOOL USAGE RULES\n=====================================================\nA) KNOWLEDGE BASE (n8n Data Table) — Accuracy and Completeness only\nB) CHAT ID DB (n8n Data Table) — Correct Theme only\nC) SLACK TOOL — Escalation check only (configure channels per your team setup)\nD) TICKETS/FOLLOWUPS (Google Sheets) — Follow-up logging only\n\n=====================================================\n4. TIMING RULES\n=====================================================\nT1. First agent response <= 1 minute after customer's first message.\nT2. Subsequent agent responses <= 3 minutes.\nT3. CLOSURE-WAIT RULE: agent must wait >= 2 minutes (120s) after last substantive message before closing.\n\n=====================================================\n5. CRITERIA (16 total)\n=====================================================\n1)  Greeting and Introduction\n2)  Professionalism and Tone\n3)  Accuracy and Completeness\n4)  Responsiveness and Efficiency\n5)  Apologize for Company Error\n6)  Clarity and Communication\n7)  Verification (customer must provide 8-digit ID for account-specific actions)\n8)  Offering Alternatives\n9)  KYC\n10) Closure\n11) Thank the Client for Contacting Us\n12) Correct Theme\n13) Escalation Check (verify agent escalated to correct internal channel)\n14) Follow-up\n15) Answered All Questions?\n16) Closure Wait Rule Kept?\n\n=====================================================\n6. OUTPUT SCHEMA (JSON ONLY, FLAT)\n=====================================================\n{\n  \"Agent\": \"\",\n  \"Chat ID\": \"\",\n  \"Greeting and Introduction\": \"\",\n  \"Professionalism and Tone\": \"\",\n  \"Accuracy and Completeness\": \"\",\n  \"Responsiveness and Efficiency\": \"\",\n  \"Apologize for Company Error\": \"\",\n  \"Clarity and Communication\": \"\",\n  \"Verification\": \"\",\n  \"Offering Alternatives\": \"\",\n  \"KYC\": \"\",\n  \"Closure\": \"\",\n  \"Thank the Client for Contacting Us\": \"\",\n  \"Correct Theme\": \"\",\n  \"Escalation Check\": \"\",\n  \"Follow-up\": \"\",\n  \"Answered All Questions?\": \"\",\n  \"Closure Wait Rule Kept?\": \"\",\n  \"First Response Seconds\": \"\",\n  \"Closure Wait Seconds\": \"\",\n  \"DB Theme\": \"\",\n  \"DB Subtheme\": \"\",\n  \"KB Tool Status\": \"\",\n  \"Chat ID DB Tool Status\": \"\",\n  \"Escalation Tool Status\": \"\",\n  \"Sheets Tool Status\": \"\",\n  \"Feedback\": \"\"\n}",
+          "maxIterations": 10,
+          "batching": { "batchSize": 1, "delayBetweenBatches": 3000 }
+        }
+      },
+      "id": "33a7c7a9-ff60-4aff-94d2-3499ddc31a6f",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [1856, -2480],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nconst VALID_SCORES = ['Yes', 'No', 'N/A', 'Check'];\n\nconst WEIGHTS = {\n  'Greeting and Introduction': 4,\n  'Professionalism and Tone': 10,\n  'Accuracy and Completeness': 15,\n  'Responsiveness and Efficiency': 4,\n  'Apologize for Company Error': 3,\n  'Clarity and Communication': 7,\n  'Verification': 20,\n  'Offering Alternatives': 4,\n  'KYC': 5,\n  'Closure': 3,\n  'Thank the Client for Contacting Us': 2,\n  'Correct Theme': 5,\n  'Escalation Check': 6,\n  'Follow-up': 8,\n  'Answered All Questions?': 1,\n  'Closure Wait Rule Kept?': 3,\n};\n\nfunction normalizeScore(v) {\n  if (v === undefined || v === null) return '';\n  const s = String(v).trim();\n  const match = VALID_SCORES.find(allowed => allowed.toLowerCase() === s.toLowerCase());\n  return match || s;\n}\n\nfunction cleanText(v) {\n  if (v === undefined || v === null) return '';\n  return String(v).replace(/\\r\\n/g, ' ').replace(/\\n/g, ' ').replace(/\\t/g, ' ').replace(/\\s+/g, ' ').trim();\n}\n\nconst scoreFields = Object.keys(WEIGHTS);\n\nfor (const item of items) {\n  let raw = item.json.output;\n  if (raw === undefined || raw === null) continue;\n  if (typeof raw === 'string' && raw.trim() === '') continue;\n\n  let parsed;\n  if (typeof raw === 'object') {\n    parsed = raw;\n  } else {\n    let str = String(raw).trim();\n    str = str.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/i, '');\n    const firstBrace = str.indexOf('{');\n    const lastBrace = str.lastIndexOf('}');\n    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {\n      str = str.slice(firstBrace, lastBrace + 1);\n    }\n    if (!str) continue;\n    try {\n      parsed = JSON.parse(str);\n    } catch (err) {\n      console.log(`[QA Code Node] Skipped unparseable output: ${err.message}`);\n      continue;\n    }\n  }\n\n  if (!parsed || typeof parsed !== 'object') continue;\n\n  const clean = {\n    Agent: cleanText(parsed['Agent']),\n    'Chat ID': cleanText(parsed['Chat ID']),\n  };\n\n  if (parsed['Closure Wait Rule Kept?'] === undefined && parsed['Closure Wait Rule Violated'] !== undefined) {\n    const legacy = String(parsed['Closure Wait Rule Violated']).trim().toLowerCase();\n    if (legacy === 'yes') parsed['Closure Wait Rule Kept?'] = 'No';\n    else if (legacy === 'no') parsed['Closure Wait Rule Kept?'] = 'Yes';\n    else parsed['Closure Wait Rule Kept?'] = parsed['Closure Wait Rule Violated'];\n  }\n\n  let totalDeduction = 0;\n  const deductions = [];\n  for (const f of scoreFields) {\n    const score = normalizeScore(parsed[f]);\n    clean[f] = score;\n    if (score === 'No') {\n      const w = WEIGHTS[f];\n      totalDeduction += w;\n      deductions.push(`${f} (-${w})`);\n    }\n  }\n\n  clean['First Response Seconds'] = cleanText(parsed['First Response Seconds']);\n  clean['Closure Wait Seconds'] = cleanText(parsed['Closure Wait Seconds']);\n  clean['DB Theme'] = cleanText(parsed['DB Theme']);\n  clean['DB Subtheme'] = cleanText(parsed['DB Subtheme']);\n  clean['KB Tool Status'] = cleanText(parsed['KB Tool Status'] ?? parsed['DB Tool Status']);\n  clean['Chat ID DB Tool Status'] = cleanText(parsed['Chat ID DB Tool Status']);\n  clean['Escalation Tool Status'] = cleanText(parsed['Escalation Tool Status']);\n  clean['Sheets Tool Status'] = cleanText(parsed['Sheets Tool Status']);\n\n  const computedScore = Math.max(0, 100 - totalDeduction);\n  clean['Score'] = String(computedScore);\n  clean['Score Breakdown'] = deductions.length ? deductions.join(', ') : 'No deductions';\n  clean['Feedback'] = cleanText(parsed['Feedback']);\n\n  results.push({ json: clean });\n}\n\nreturn results;"
+      },
+      "id": "e7c9e6b4-4e12-44ff-885c-3cfcdf243ebc",
+      "name": "Code in JavaScript4",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2384, -2480],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Daily QA Sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_SHEET_TAB_ID",
+          "mode": "list",
+          "cachedResultName": "QA2026"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Agent": "={{ $json.Agent }}",
+            "Chat ID": "={{ $json[\"Chat ID\"] }}",
+            "Greeting and Introduction": "={{ $json[\"Greeting and Introduction\"] }}",
+            "Professionalism and Tone": "={{ $json[\"Professionalism and Tone\"] }}",
+            "Accuracy and Completeness": "={{ $json[\"Accuracy and Completeness\"] }}",
+            "Responsiveness and Efficiency": "={{ $json[\"Responsiveness and Efficiency\"] }}",
+            "Apologize for Company Error": "={{ $json[\"Apologize for Company Error\"] }}",
+            "Clarity and Communication": "={{ $json[\"Clarity and Communication\"] }}",
+            "Verification": "={{ $json.Verification }}",
+            "Offering Alternatives": "={{ $json[\"Offering Alternatives\"] }}",
+            "KYC (if applicable)": "={{ $json.KYC }}",
+            "Closure": "={{ $json.Closure }}",
+            "Thank the Client for Contacting Us": "={{ $json[\"Thank the Client for Contacting Us\"] }}",
+            "Correct Theme": "={{ $json[\"Correct Theme\"] }}",
+            "Escalation Check": "={{ $json[\"Escalation Check\"] }}",
+            "Follow up": "={{ $json[\"Follow-up\"] }}",
+            "Answered all Questions?": "={{ $json[\"Answered All Questions?\"] }}",
+            "Wait Rule Kept?": "={{ $json[\"Closure Wait Rule Kept?\"] }}",
+            "Score": "={{ $json.Score }}",
+            "Score Breakdown": "={{ $json[\"Score Breakdown\"] }}",
+            "Overall Comment": "={{ $json.Feedback }}",
+            "Review Date": "={{ $now.minus({ days: 1 }).toFormat('dd/MM/yyyy') }}",
+            "Closure Wait time": "={{ $json[\"Closure Wait Seconds\"] }}"
+          },
+          "matchingColumns": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "31dc6d54-c529-4bb8-a4f3-8641d6d439fe",
+      "name": "Append row in sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [2608, -2352],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "7e6d6884-1cd0-4955-99ab-e52db36a7dab",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [768, -2304],
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "maxTries": 5,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YOUR_CHAT_ID_DB_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Chat ID DB"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [320, -2112],
+      "id": "9136d98e-293e-41a1-8506-7eb485c93a47",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "YOUR_MODEL_NAME",
+          "mode": "list",
+          "cachedResultName": "Your LLM Model"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [1664, -2256],
+      "id": "89f135d6-5838-4a5d-aa06-4db1948d0cf5",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "YOUR_OPENAI_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YOUR_CHAT_ID_DB_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Chat ID DB"
+        },
+        "matchType": "allConditions",
+        "filters": { "conditions": [] },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1.1,
+      "position": [1792, -2256],
+      "id": "27854ccd-0d75-47ec-af96-760e50502d82",
+      "name": "Chat ID DB"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YOUR_KNOWLEDGE_BASE_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Knowledge Base"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1.1,
+      "position": [1920, -2256],
+      "id": "230746c3-afc2-4b94-8638-9739507072d3",
+      "name": "Knowledge Base"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_FOLLOWUPS_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Tickets/Followups"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "filtersUI": { "values": [] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [2048, -2256],
+      "id": "0bd5a763-9150-48c8-bc6f-4d6942651bbc",
+      "name": "Tickets/Followups",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "search",
+        "query": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Search_Query', ``, 'string') }}",
+        "returnAll": true,
+        "options": {
+          "searchChannel": [
+            "YOUR_ESCALATION_CHANNEL_1",
+            "YOUR_ESCALATION_CHANNEL_2",
+            "YOUR_ESCALATION_CHANNEL_3"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.slackTool",
+      "typeVersion": 2.4,
+      "position": [2176, -2256],
+      "id": "d6b4d1e9-93c7-4760-b06b-5144f2cc1446",
+      "name": "Search for messages in Slack",
+      "webhookId": "YOUR_SLACK_WEBHOOK_ID",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "YOUR_SLACK_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out items with no valid externalID\nconst items = $input.all();\n\nreturn items.filter(item => {\n  const id = item.json.externalID;\n  return id && id !== \"0\" && id !== 0;\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [544, -2304],
+      "id": "f926e45c-8384-470e-b7db-6c6ced7d5f1b",
+      "name": "Code in JavaScript6"
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YOUR_CHAT_ID_DB_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Chat ID DB"
+        },
+        "filters": {
+          "conditions": [
+            { "keyName": "chatId", "keyValue": "={{ $json.chatId }}" },
+            { "keyName": "externalID", "keyValue": "={{ $json.externalID }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [544, -2112],
+      "id": "1e01ff30-621f-46ea-b351-4d023d2cef46",
+      "name": "Delete row(s)",
+      "retryOnFail": false,
+      "alwaysOutputData": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code in JavaScript": { "main": [[{ "node": "If", "type": "main", "index": 0 }]] },
+    "HTTP Request2": { "main": [[{ "node": "If1", "type": "main", "index": 0 }]] },
+    "Code in JavaScript2": { "main": [[{ "node": "HTTP Request2", "type": "main", "index": 0 }]] },
+    "If1": { "main": [[{ "node": "Code in JavaScript", "type": "main", "index": 0 }]] },
+    "If": {
+      "main": [
+        [{ "node": "Code in JavaScript1", "type": "main", "index": 0 }],
+        [{ "node": "Aggregate1", "type": "main", "index": 0 }]
+      ]
+    },
+    "Aggregate1": { "main": [[{ "node": "Get row(s)1", "type": "main", "index": 0 }]] },
+    "If2": {
+      "main": [
+        [{ "node": "Get row(s)", "type": "main", "index": 0 }],
+        [{ "node": "Code in JavaScript2", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get row(s)1": { "main": [[{ "node": "Code in JavaScript5", "type": "main", "index": 0 }]] },
+    "Code in JavaScript5": { "main": [[{ "node": "If2", "type": "main", "index": 0 }]] },
+    "Insert row": { "main": [[{ "node": "Get row(s)1", "type": "main", "index": 0 }]] },
+    "Schedule Trigger": { "main": [[{ "node": "HTTP Request2", "type": "main", "index": 0 }]] },
+    "Code in JavaScript1": { "main": [[{ "node": "Insert row", "type": "main", "index": 0 }]] },
+    "HTTP Request1": {
+      "main": [
+        [{ "node": "Code in JavaScript3", "type": "main", "index": 0 }, { "node": "Loop Over Items", "type": "main", "index": 0 }],
+        [{ "node": "Loop Over Items", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code in JavaScript3": { "main": [[{ "node": "Rate Limit Delay", "type": "main", "index": 0 }]] },
+    "Rate Limit Delay": { "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]] },
+    "AI Agent": {
+      "main": [
+        [{ "node": "Code in JavaScript4", "type": "main", "index": 0 }],
+        [{ "node": "Loop Over Items", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code in JavaScript4": { "main": [[{ "node": "Append row in sheet", "type": "main", "index": 0 }]] },
+    "Append row in sheet": { "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]] },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [{ "node": "HTTP Request1", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [{ "node": "Delete row(s)", "type": "main", "index": 0 }, { "node": "Code in JavaScript6", "type": "main", "index": 0 }]
+      ]
+    },
+    "OpenAI Chat Model": { "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]] },
+    "Chat ID DB": { "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]] },
+    "Knowledge Base": { "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]] },
+    "Tickets/Followups": { "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]] },
+    "Search for messages in Slack": { "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]] },
+    "Code in JavaScript6": { "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]] },
+    "Delete row(s)": { "main": [[]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
